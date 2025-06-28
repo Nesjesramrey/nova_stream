@@ -3,7 +3,9 @@ import path from 'path';
 
 // Load environment variables from .env file
 dotenv.config();
-
+console.log('🔍 Knowledge Base ID loaded:', process.env.KNOWLEDGE_BASE_ID);
+console.log('🔍 Data Source ID loaded:', process.env.DATA_SOURCE_ID);
+console.log('🔍 S3 Bucket loaded:', process.env.S3_BUCKET_NAME);
 /**
  * Application configuration
  * All sensitive information is loaded from environment variables

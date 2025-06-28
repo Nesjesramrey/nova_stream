@@ -23,6 +23,7 @@ import {
   KnowledgeBaseToolSchema,
 } from "./consts";
 import { BedrockKnowledgeBaseClient } from "./bedrock-kb-client";
+import { config } from './config';
 
 export interface NovaSonicBidirectionalStreamClientConfig {
   requestHandlerConfig?:
@@ -253,26 +254,20 @@ export class NovaSonicBidirectionalStreamClient {
   }
 
   private async queryBenefitPolicy(query: string, numberOfResults: number = 3): Promise<Object> {
-    // Create a client instance
     const kbClient = new BedrockKnowledgeBaseClient();
 
-    // Replace with your actual Knowledge Base ID
-    const KNOWLEDGE_BASE_ID = 'IXMOXC7K6K';
+    const KNOWLEDGE_BASE_ID = config.knowledgeBase.id;
 
     try {
       console.log(`Searching for: "${query}"`);
 
-      // Retrieve information from the Knowledge Base
       const results = await kbClient.retrieveFromKnowledgeBase({
         knowledgeBaseId: KNOWLEDGE_BASE_ID,
         query,
         numberOfResults: numberOfResults
       });
 
-      console.log(`Results: ${JSON.stringify(results)}`);
-
       return { results: results };
-
     } catch (error) {
       console.error("Error:", error);
       return {};

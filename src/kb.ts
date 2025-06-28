@@ -2,6 +2,7 @@ import {
     BedrockAgentRuntimeClient,
     RetrieveAndGenerateCommand
   } from "@aws-sdk/client-bedrock-agent-runtime";
+import { config } from './config';
   
   const client = new BedrockAgentRuntimeClient({ region: "us-east-1" });
   
@@ -11,7 +12,7 @@ import {
       retrieveAndGenerateConfiguration: {
         type: "KNOWLEDGE_BASE",
         knowledgeBaseConfiguration: {
-          knowledgeBaseId: "IXMOXC7K6K",
+          knowledgeBaseId: config.knowledgeBase.id,
           modelArn: "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0",
           retrievalConfiguration: {
             vectorSearchConfiguration: {
