@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audio Streaming to Bedrock</title>
+    <title>Audio Streaming con Bedrock</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/src/style.css">
     <script src="/socket.io/socket.io.js"></script>
@@ -14,8 +14,8 @@
         <div class="header">
             <div class="header-content">
                 <i class="fas fa-microphone-alt header-icon"></i>
-                <h1>Speak English with Sonic </h1>
-                <p>Powered by Amazon Bedrock & Amazon Nova Sonic</p>
+                <h1>Habla con Sonic </h1>
+                <p>Powered by Codster</p>
             </div>
         </div>
 
@@ -26,8 +26,8 @@
                     <i class="fas fa-circle"></i>
                 </div>
                 <div class="status-text">
-                    <span class="status-label">Status</span>
-                    <span class="status-value">Disconnected</span>
+                    <span class="status-label">Estatus</span>
+                    <span class="status-value">Desconectado</span>
                 </div>
             </div>
         </div>
@@ -35,12 +35,12 @@
         <!-- Chat Section -->
         <div class="chat-section">
             <div class="section-header">
-                <h2><i class="fas fa-comments"></i> Conversation</h2>
+                <h2><i class="fas fa-comments"></i> Conversacion</h2>
             </div>
             <div id="chat-container">
                 <div class="chat-placeholder">
                     <i class="fas fa-robot"></i>
-                    <p>Start streaming to begin your conversation...</p>
+                    <p>Empieza a hablar con Sonic</p>
                 </div>
             </div>
         </div>
@@ -50,11 +50,11 @@
             <div id="controls">
                 <button id="start" class="btn btn-primary">
                     <i class="fas fa-play"></i>
-                    <span>Start Streaming</span>
+                    <span>Empieza la conversación</span>
                 </button>
                 <button id="stop" class="btn btn-secondary" disabled>
                     <i class="fas fa-stop"></i>
-                    <span>Stop Streaming</span>
+                    <span>Deten la conversación</span>
                 </button>
             </div>
         </div>
@@ -62,8 +62,8 @@
         <!-- PDF Upload Section -->
         <div class="upload-section">
             <div class="section-header">
-                <h2><i class="fas fa-file-pdf"></i> Knowledge Base</h2>
-                <p>Upload PDF documents to enhance AI responses</p>
+                <h2><i class="fas fa-file-pdf"></i> Base de conocimientos</h2>
+                <p>Carga documentos PDF para mejorar las respuestas de Sonic</p>
             </div>
             
             <div class="upload-card">
@@ -72,12 +72,12 @@
                         <input type="file" id="pdf-file" name="pdfFile" accept="application/pdf" required>
                         <label for="pdf-file" class="file-input-label">
                             <i class="fas fa-cloud-upload-alt"></i>
-                            <span class="file-text">Choose PDF file or drag here</span>
+                            <span class="file-text">Escoge un PDF o arrastralo aquí</span>
                         </label>
                     </div>
                     <button type="submit" id="upload-button" class="btn btn-accent">
                         <i class="fas fa-upload"></i>
-                        <span>Upload to Knowledge Base</span>
+                        <span>Cargar a la base de conocimientos</span>
                     </button>
                 </form>
                 <div id="upload-status"></div>

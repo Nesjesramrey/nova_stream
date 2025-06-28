@@ -509,19 +509,19 @@ socket.on('streamComplete', () => {
     if (isStreaming) {
         stopStreaming();
     }
-    statusElement.textContent = "Ready";
+    statusElement.textContent = "Listo";
     statusElement.className = "ready";
 });
 
 // Handle connection status updates
 socket.on('connect', () => {
-    statusElement.textContent = "Connected to server";
+    statusElement.textContent = "Conectado al servidor";
     statusElement.className = "connected";
     sessionInitialized = false;
 });
 
 socket.on('disconnect', () => {
-    statusElement.textContent = "Disconnected from server";
+    statusElement.textContent = "Desconectado del servidor";
     statusElement.className = "disconnected";
     startButton.disabled = true;
     stopButton.disabled = true;
