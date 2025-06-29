@@ -5,7 +5,11 @@ import { fromIni } from "@aws-sdk/credential-providers";
 import { NovaSonicBidirectionalStreamClient } from './client';
 import { Buffer } from 'node:buffer';
 import uploadRoutes from './routes/upload';
+import sharepointRoutes from './routes/sharepoint';
+import { SharePointKnowledgeBase } from './sharepoint-storage';
 import { config, validateConfig } from './config';
+import fs from 'fs/promises';
+import path from 'path';
 
 // Validate required environment variables
 try {
@@ -23,8 +27,9 @@ const io = new Server(server);
 // Add JSON body parser middleware
 app.use(express.json());
 
-// Register the upload routes
+// Register the routes
 app.use('/api', uploadRoutes);
+app.use('/api/sharepoint', sharepointRoutes);
 
 // Create the AWS Bedrock client
 const bedrockClient = new NovaSonicBidirectionalStreamClient({
@@ -36,6 +41,52 @@ const bedrockClient = new NovaSonicBidirectionalStreamClient({
         credentials: fromIni({ profile: config.aws.profile })
     }
 });
+
+// Ensure data directory exists
+async function ensureDataDirectory() {
+    const dataDir = path.join(__dirname, '../data');
+    try {
+        await fs.access(dataDir);
+    } catch (error) {
+        console.log('📁 Creating data directory...');
+        await fs.mkdir(dataDir, { recursive: true });
+        console.log('✅ Data directory created successfully');
+    }
+}
+
+// Initialize SharePoint Knowledge Base on startup
+async function initializeSharePointKnowledgeBase() {
+    try {
+        console.log('🔄 Initializing SharePoint Knowledge Base...');
+        
+        // Ensure data directory exists first
+        await ensureDataDirectory();
+        
+        const sharepointKB = new SharePointKnowledgeBase();
+        
+        const result = await sharepointKB.updateKnowledgeBase();
+        console.log(`✅ SharePoint Knowledge Base initialized successfully!`);
+        console.log(`📚 Documents processed: ${result.updated}/${result.total}`);
+        
+        const status = await sharepointKB.getStatus();
+        console.log(`📊 SharePoint Knowledge Base Status:`);
+        console.log(`   📄 Documents: ${status.documentCount}`);
+        console.log(`   💾 Total Size: ${(status.totalSize / 1024 / 1024).toFixed(2)} MB`);
+        console.log(`   🕒 Last Sync: ${status.lastSync.toLocaleString('es-ES')}`);
+        console.log(`\n🎉 Sistema completamente inicializado y listo para usar!`);
+        console.log(`🔥 Ambas fuentes de conocimiento están disponibles:`);
+        console.log(`   ✓ AWS Bedrock Knowledge Base`);
+        console.log(`   ✓ SharePoint Documents Knowledge Base\n`);
+        
+    } catch (error) {
+        console.error('❌ Error initializing SharePoint Knowledge Base:', error);
+        console.log('⚠️  Server will continue with Bedrock KB only.');
+        console.log('💡 You can update SharePoint manually later using the web interface.\n');
+    }
+}
+
+// Initialize SharePoint on startup (non-blocking)
+initializeSharePointKnowledgeBase().catch(console.error);
 
 // Periodically check for and close inactive sessions (every minute)
 // Sessions with no activity for over 5 minutes will be force closed
@@ -140,10 +191,11 @@ io.on('connection', (socket) => {
             }
         });
 
-        socket.on('promptStart', async () => {
+        socket.on('promptStart', async (data) => {
             try {
-                console.log('Prompt start received');
-                await session.setupPromptStart();
+                console.log('Prompt start received', data);
+                const knowledgeSource = data?.knowledgeSource || 'bedrock';
+                await session.setupPromptStart(knowledgeSource);
             } catch (error) {
                 console.error('Error processing prompt start:', error);
                 socket.emit('error', {
@@ -161,6 +213,28 @@ io.on('connection', (socket) => {
                 console.error('Error processing system prompt:', error);
                 socket.emit('error', {
                     message: 'Error processing system prompt',
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        socket.on('setKnowledgeSource', (data) => {
+            try {
+                const { source } = data;
+                if (source === 'bedrock' || source === 'sharepoint') {
+                    bedrockClient.setKnowledgeSource(sessionId, source);
+                    console.log(`Knowledge source set to ${source} for session ${sessionId}`);
+                    socket.emit('knowledgeSourceSet', { source });
+                } else {
+                    socket.emit('error', {
+                        message: 'Invalid knowledge source',
+                        details: 'Source must be either "bedrock" or "sharepoint"'
+                    });
+                }
+            } catch (error) {
+                console.error('Error setting knowledge source:', error);
+                socket.emit('error', {
+                    message: 'Error setting knowledge source',
                     details: error instanceof Error ? error.message : String(error)
                 });
             }
@@ -256,8 +330,12 @@ app.get('/health', (_, res) => {
 // Start the server
 const PORT = config.server.port;
 server.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
-    console.log(`Open http://localhost:${PORT} in your browser to access the application`);
+    console.log(`🚀 Server listening on port ${PORT}`);
+    console.log(`🌐 Open http://localhost:${PORT} in your browser to access the application`);
+    console.log(`📋 Knowledge Base Sources Available:`);
+    console.log(`   - AWS Bedrock Knowledge Base (Always available)`);
+    console.log(`   - SharePoint Documents (Initializing in background...)`);
+    console.log(`💡 Tip: SharePoint KB will be ready within a few moments!`);
 });
 
 process.on('SIGINT', async () => {

@@ -6,23 +6,40 @@
 - [Configuración](#configuración)
 - [APIs y Rutas](#apis-y-rutas)
 - [Manejo de WebSockets](#manejo-de-websockets)
+- [Gestión de Fuentes de Conocimiento](#gestión-de-fuentes-de-conocimiento)
 - [Integración con AWS](#integración-con-aws)
+- [Integración con SharePoint](#integración-con-sharepoint)
 - [Gestión de Sesiones](#gestión-de-sesiones)
 - [Flujo de Datos](#flujo-de-datos)
 - [Manejo de Errores](#manejo-de-errores)
 
 ## Arquitectura General
 
-El backend está construido con Node.js y TypeScript, utilizando Express.js como framework web y Socket.IO para comunicación en tiempo real. La arquitectura sigue un patrón de microservicios con separación clara de responsabilidades.
+El backend está construido con Node.js y TypeScript, utilizando Express.js como framework web y Socket.IO para comunicación en tiempo real. La arquitectura sigue un patrón de microservicios con separación clara de responsabilidades y **soporte para múltiples fuentes de conocimiento**.
 
 ### Stack Tecnológico
 - **Runtime**: Node.js
 - **Lenguaje**: TypeScript
 - **Framework Web**: Express.js
 - **WebSockets**: Socket.IO
-- **AWS SDK**: @aws-sdk/client-bedrock-runtime, @aws-sdk/client-s3
+- **AWS SDK**: @aws-sdk/client-bedrock-runtime, @aws-sdk/client-s3, @aws-sdk/client-bedrock-agent
+- **SharePoint SDK**: @azure/msal-node, pdf-parse
 - **Gestión de Archivos**: Multer
 - **Variables de Entorno**: dotenv
+
+### Arquitectura de Fuentes de Conocimiento
+```
+Knowledge Sources
+├── AWS Bedrock Knowledge Base
+│   ├── Bedrock Agent Client
+│   ├── Vector Search
+│   └── RAG Generation
+└── SharePoint Documents
+    ├── MSAL Authentication
+    ├── Document Download
+    ├── Text Extraction
+    └── Local Search Engine
+```
 
 ## Componentes Principales
 
@@ -34,6 +51,7 @@ El servidor principal maneja las conexiones WebSocket y sirve archivos estático
 - Configuración de Socket.IO
 - Manejo de conexiones de clientes
 - Gestión del ciclo de vida de sesiones
+- **Selector dinámico de fuente de conocimiento**
 - Limpieza automática de sesiones inactivas
 
 **Características:**
@@ -56,18 +74,64 @@ const bedrockClient = new NovaSonicBidirectionalStreamClient({
 ```
 
 ### 2. Cliente Bedrock (`src/client.ts`)
-Maneja la comunicación bidireccional con Amazon Nova Sonic.
+Maneja la comunicación bidireccional con Amazon Nova Sonic y **gestión de múltiples fuentes de conocimiento**.
 
-**Funcionalidades:**
+**Funcionalidades Principales:**
 - Gestión de sesiones de streaming
 - Manejo de eventos de audio y texto
 - Procesamiento de respuestas del modelo
-- Control de herramientas (tool use)
+- **Control dinámico de herramientas (tool use)**
+- **Selector de fuente de conocimiento por sesión**
 
-### 3. Configuración (`src/config.ts`)
-Centraliza la gestión de configuración del sistema.
+**Nuevas Funcionalidades:**
+```typescript
+// Selector de fuente de conocimiento
+public setKnowledgeSource(sessionId: string, source: 'bedrock' | 'sharepoint'): void
 
-**Variables de Configuración:**
+// Consulta a Bedrock Knowledge Base
+private async queryBenefitPolicy(query: string, numberOfResults: number = 3): Promise<Object>
+
+// Consulta a SharePoint Knowledge Base
+private async querySharePointKnowledge(query: string, numberOfResults: number = 5): Promise<Object>
+```
+
+### 3. SharePoint Storage (`src/sharepoint-storage.ts`)
+**Nuevo componente** que maneja el almacenamiento y búsqueda local de documentos de SharePoint.
+
+**Funcionalidades:**
+- Descarga y procesamiento de PDFs desde SharePoint
+- Almacenamiento local en JSON con metadatos
+- Motor de búsqueda por relevancia
+- Actualización incremental de documentos
+- Gestión de estado y estadísticas
+
+**Características Principales:**
+```typescript
+export class SharePointKnowledgeBase {
+    // Actualiza la base de conocimiento desde SharePoint
+    public async updateKnowledgeBase(): Promise<{ updated: number; total: number }>
+    
+    // Busca en la base de conocimiento local
+    public async searchKnowledge(query: string, maxResults: number = 5): Promise<any[]>
+    
+    // Obtiene estado de la base de conocimiento
+    public async getStatus(): Promise<{ documentCount: number; lastSync: Date; totalSize: number }>
+}
+```
+
+### 4. SharePoint Client (`src/sharepoint-client.ts`)
+Cliente para comunicación con SharePoint Online via Microsoft Graph API.
+
+**Funcionalidades:**
+- Autenticación con MSAL
+- Descarga de documentos PDF
+- Extracción de texto con pdf-parse
+- Gestión de errores y reintentos
+
+### 5. Configuración (`src/config.ts`)
+Centraliza la gestión de configuración del sistema, **incluyendo SharePoint**.
+
+**Variables de Configuración Actualizadas:**
 ```typescript
 export interface Config {
     aws: {
@@ -85,14 +149,14 @@ export interface Config {
     s3: {
         bucketName: string;
     };
+    sharepoint: {
+        tenantId: string;
+        clientId: string;
+        clientSecret: string;
+        siteUrl: string;
+    };
 }
 ```
-
-### 4. Tipos (`src/types.ts`)
-Define las interfaces TypeScript para el tipado fuerte.
-
-### 5. Cliente S3 y Knowledge Base (`src/s3-bedrock-client.ts`)
-Maneja las operaciones de S3 y sincronización de Knowledge Base.
 
 ## Configuración
 
@@ -108,6 +172,12 @@ DATA_SOURCE_ID=your-data-source-id
 
 # S3
 S3_BUCKET_NAME=your-s3-bucket-name
+
+# SharePoint Configuration (NUEVO)
+SHAREPOINT_TENANT_ID=your_tenant_id
+SHAREPOINT_CLIENT_ID=your_client_id
+SHAREPOINT_CLIENT_SECRET=your_client_secret
+SHAREPOINT_SITE_URL=https://your-tenant.sharepoint.com/sites/your-site
 
 # Servidor
 PORT=3000
@@ -146,6 +216,82 @@ try {
 }
 ```
 
+#### 2. SharePoint Knowledge Base (`/api/sharepoint`) - **NUEVAS RUTAS**
+
+##### 2.1 Actualizar SharePoint KB
+**Endpoint**: `POST /api/sharepoint/update`
+**Funcionalidad**: Actualiza la base de conocimiento de SharePoint
+
+**Respuesta:**
+```json
+{
+    "success": true,
+    "message": "SharePoint knowledge base updated successfully",
+    "updated": 15,
+    "total": 15
+}
+```
+
+##### 2.2 Estado de SharePoint KB
+**Endpoint**: `GET /api/sharepoint/status`
+**Funcionalidad**: Obtiene el estado actual de la KB de SharePoint
+
+**Respuesta:**
+```json
+{
+    "success": true,
+    "status": {
+        "documentCount": 15,
+        "lastSync": "2023-12-07T10:30:00.000Z",
+        "totalSize": 2048576,
+        "formattedSize": "2.0 MB"
+    }
+}
+```
+
+##### 2.3 Listar Documentos
+**Endpoint**: `GET /api/sharepoint/documents`
+**Funcionalidad**: Lista los documentos disponibles en SharePoint KB
+
+**Respuesta:**
+```json
+{
+    "success": true,
+    "documents": [
+        "Employee_Handbook.pdf",
+        "Benefits_Guide.pdf",
+        "IT_Policies.pdf"
+    ]
+}
+```
+
+##### 2.4 Búsqueda en SharePoint
+**Endpoint**: `POST /api/sharepoint/search`
+**Funcionalidad**: Búsqueda directa en SharePoint KB (para testing)
+
+**Parámetros:**
+```json
+{
+    "query": "vacation policy",
+    "maxResults": 5
+}
+```
+
+**Respuesta:**
+```json
+{
+    "success": true,
+    "query": "vacation policy",
+    "results": [
+        {
+            "fileName": "Employee_Handbook.pdf",
+            "excerpt": "...vacation policy allows for 15 days...",
+            "relevanceScore": 8.5
+        }
+    ]
+}
+```
+
 ### Archivos Estáticos
 - **Ruta**: `/*`
 - **Directorio**: `public/`
@@ -170,9 +316,17 @@ socket.on('audioInput', async (audioData) => {
 });
 ```
 
-#### 2. `promptStart`
-**Propósito**: Inicia una nueva conversación
-**Funcionalidad**: Configura el inicio del prompt
+#### 2. `promptStart` - **ACTUALIZADO**
+**Propósito**: Inicia una nueva conversación **con fuente de conocimiento**
+**Funcionalidad**: Configura el inicio del prompt con la fuente seleccionada
+
+**Nuevo formato:**
+```typescript
+socket.on('promptStart', async (data) => {
+    const knowledgeSource = data?.knowledgeSource || 'bedrock';
+    await session.setupPromptStart(knowledgeSource);
+});
+```
 
 #### 3. `systemPrompt`
 **Propósito**: Establece el prompt del sistema
@@ -185,6 +339,19 @@ socket.on('audioInput', async (audioData) => {
 #### 5. `stopAudio`
 **Propósito**: Detiene el streaming y cierra la sesión
 **Funcionalidad**: Ejecuta secuencia de cierre limpio
+
+#### 6. `setKnowledgeSource` - **NUEVO**
+**Propósito**: Cambia la fuente de conocimiento durante la sesión
+**Parámetros**: `{ source: 'bedrock' | 'sharepoint' }`
+**Respuesta**: `knowledgeSourceSet` event
+
+```typescript
+socket.on('setKnowledgeSource', (data) => {
+    const { source } = data;
+    bedrockClient.setKnowledgeSource(sessionId, source);
+    socket.emit('knowledgeSourceSet', { source });
+});
+```
 
 ### Eventos de Servidor a Cliente
 
@@ -210,13 +377,89 @@ socket.on('audioInput', async (audioData) => {
 **Propósito**: Notifica uso de herramientas
 **Datos**: Información de la herramienta utilizada
 
-#### 5. `error`
+#### 5. `knowledgeSourceSet` - **NUEVO**
+**Propósito**: Confirma el cambio de fuente de conocimiento
+**Formato**:
+```json
+{
+    "source": "bedrock|sharepoint"
+}
+```
+
+#### 6. `error`
 **Propósito**: Reporta errores al cliente
 **Formato**:
 ```json
 {
     "message": "Descripción del error",
     "details": "Detalles técnicos"
+}
+```
+
+## Gestión de Fuentes de Conocimiento
+
+### Sistema Dual de Knowledge Base
+
+El sistema ahora soporta **dos fuentes de conocimiento independientes**:
+
+#### 1. AWS Bedrock Knowledge Base
+- **Ubicación**: AWS Bedrock Agent
+- **Tipo**: Vector database managed
+- **Búsqueda**: Vector similarity search
+- **Herramienta**: `retrieve_benefit_policy`
+- **Uso**: Políticas empresariales, beneficios, información estructurada
+
+#### 2. SharePoint Documents Knowledge Base
+- **Ubicación**: Local storage (JSON)
+- **Tipo**: Text-based search engine
+- **Búsqueda**: Term frequency + relevance scoring
+- **Herramienta**: `retrieve_sharepoint_knowledge`
+- **Uso**: Documentos corporativos, políticas de SharePoint
+
+### Configuración de Herramientas Dinámicas
+
+```typescript
+// Configuración para Bedrock
+const bedrockToolConfig = {
+    toolChoice: { tool: { name: "retrieve_benefit_policy" } },
+    tools: [{
+        toolSpec: {
+            name: "retrieve_benefit_policy",
+            description: "Retrieves company benefit policy from Bedrock Knowledge Base",
+            inputSchema: { json: KnowledgeBaseToolSchema }
+        }
+    }]
+};
+
+// Configuración para SharePoint
+const sharepointToolConfig = {
+    toolChoice: { tool: { name: "retrieve_sharepoint_knowledge" } },
+    tools: [{
+        toolSpec: {
+            name: "retrieve_sharepoint_knowledge", 
+            description: "Retrieves information from SharePoint documents",
+            inputSchema: { json: SharePointToolSchema }
+        }
+    }]
+};
+```
+
+### Flujo de Procesamiento de Herramientas
+
+```typescript
+private async processToolUse(toolName: string, toolUseContent: object): Promise<Object> {
+    const tool = toolName.toLowerCase();
+
+    switch (tool) {
+        case "retrieve_benefit_policy":
+            return this.queryBenefitPolicy(query, maxResults);
+        
+        case "retrieve_sharepoint_knowledge":
+            return this.querySharePointKnowledge(query, maxResults);
+        
+        default:
+            throw new Error(`Tool ${tool} not supported`);
+    }
 }
 ```
 
@@ -235,13 +478,63 @@ socket.on('audioInput', async (audioData) => {
 - **Uso**: Indexación de documentos para RAG
 - **Sincronización**: Automática después de subir PDFs
 
+## Integración con SharePoint
+
+### 1. Autenticación Microsoft Graph
+```typescript
+const msalApp = new ConfidentialClientApplication({
+    auth: {
+        clientId: config.sharepoint.clientId,
+        authority: `https://login.microsoftonline.com/${config.sharepoint.tenantId}`,
+        clientSecret: config.sharepoint.clientSecret
+    }
+});
+```
+
+### 2. Descarga de Documentos
+- **API**: Microsoft Graph API v1.0
+- **Filtro**: Solo archivos PDF
+- **Procesamiento**: Extracción de texto en memoria
+
+### 3. Almacenamiento Local
+- **Formato**: JSON con metadatos
+- **Ubicación**: `data/sharepoint-knowledge.json`
+- **Estructura**:
+```json
+{
+    "documents": [
+        {
+            "fileName": "documento.pdf",
+            "text": "contenido extraído...",
+            "lastUpdated": "2023-12-07T10:30:00.000Z",
+            "size": 12345
+        }
+    ],
+    "lastSync": "2023-12-07T10:30:00.000Z"
+}
+```
+
+### 4. Motor de Búsqueda
+- **Algoritmo**: Term frequency + position weighting
+- **Scoring**: Relevance score basado en coincidencias
+- **Excerpts**: Contexto automático alrededor de matches
+
 ## Gestión de Sesiones
 
 ### Ciclo de Vida de Sesión
 1. **Creación**: Al conectarse un cliente WebSocket
-2. **Inicialización**: Con `promptStart` y `systemPrompt`
-3. **Streaming**: Durante `audioInput` activo
-4. **Cierre**: Con `stopAudio` o desconexión
+2. **Configuración de KB**: Selección de fuente de conocimiento
+3. **Inicialización**: Con `promptStart` y `systemPrompt`
+4. **Streaming**: Durante `audioInput` activo
+5. **Cierre**: Con `stopAudio` o desconexión
+
+### Datos de Sesión Expandidos
+```typescript
+interface SessionData {
+    // ... campos existentes ...
+    knowledgeSource: 'bedrock' | 'sharepoint'; // NUEVO CAMPO
+}
+```
 
 ### Limpieza Automática
 El servidor implementa limpieza automática de sesiones inactivas:
@@ -258,32 +551,32 @@ setInterval(() => {
 }, 60000);
 ```
 
-### Métricas de Conexión
-Monitoreo cada minuto de conexiones activas:
-```typescript
-setInterval(() => {
-    const connectionCount = Object.keys(io.sockets.sockets).length;
-    console.log(`Active socket connections: ${connectionCount}`);
-}, 60000);
-```
-
 ## Flujo de Datos
 
-### 1. Flujo de Audio
+### 1. Flujo de Audio (sin cambios)
 ```
 Cliente → Socket.IO → Server → Bedrock Client → Nova Sonic
     ↑                                                    ↓
     ←  Audio Response  ←  Server  ←  Bedrock Client  ←
 ```
 
-### 2. Flujo de Subida de PDF
+### 2. Flujo de Conocimiento (NUEVO)
+```
+User Query → Nova Sonic → Tool Selection → Knowledge Source
+                                        ↓
+                            Bedrock KB ←→ SharePoint KB
+                                        ↓
+                            Results → Nova Sonic → Response
+```
+
+### 3. Flujo de Subida de PDF (sin cambios)
 ```
 Cliente → Multer → S3 Upload → Knowledge Base Sync → Respuesta
 ```
 
-### 3. Flujo de Sesión
+### 4. Flujo de SharePoint (NUEVO)
 ```
-Conexión → Crear Sesión → Configurar → Streaming → Cierre
+Update Request → SharePoint Client → Download PDFs → Extract Text → Store Local → Response
 ```
 
 ## Manejo de Errores
@@ -297,47 +590,34 @@ Conexión → Crear Sesión → Configurar → Streaming → Cierre
 #### 2. Errores de Streaming
 - Captura de excepciones en handlers
 - Emisión de eventos de error al cliente
-- Logging detallado
 
-#### 3. Errores de Sesión
-- Cleanup automático en caso de error
-- Reintento de operaciones críticas
+#### 3. Errores de SharePoint (NUEVO)
+- Reintentos automáticos en fallos de red
+- Fallback a cache local
+- Logging detallado de errores de autenticación
 
-### Logging
-El sistema implementa logging comprensivo:
-- Eventos de conexión/desconexión
-- Operaciones de streaming
-- Errores y excepciones
-- Métricas de rendimiento
+#### 4. Errores de Knowledge Base
+- Timeout handling para consultas largas
+- Respuestas de fallback cuando no hay resultados
+- Logging de performance de consultas
 
-## Consideraciones de Rendimiento
+### Logging y Monitoreo
+```typescript
+// Ejemplo de logging estructurado
+console.log(`Knowledge source set to ${source} for session ${sessionId}`);
+console.log(`Searching ${source} KB for: "${query}"`);
+console.log(`SharePoint KB updated: ${result.updated} documents`);
+```
 
-### 1. Concurrencia
-- Máximo 10 streams concurrentes por cliente
-- Gestión de memoria para buffers de audio
+## Métricas y Performance
 
-### 2. Optimizaciones
-- Procesamiento de audio en chunks de 512 bytes
-- Cleanup automático de recursos
-- Rate limiting implícito por diseño
+### Nuevas Métricas
+- **Knowledge Source Usage**: Tracking de uso por fuente
+- **SharePoint Sync Performance**: Tiempo de sincronización
+- **Search Performance**: Tiempo de respuesta por fuente
+- **Document Processing**: Velocidad de extracción de texto
 
-### 3. Escalabilidad
-- Arquitectura basada en eventos
-- Gestión eficiente de sesiones
-- Separación de responsabilidades
-
-## Seguridad
-
-### 1. Autenticación AWS
-- Credenciales por perfil IAM
-- Rotación automática de tokens
-
-### 2. Validación de Entrada
-- Validación de tipos de archivo
-- Límites de tamaño
-- Sanitización de datos
-
-### 3. Gestión de Recursos
-- Timeout de sesiones
-- Limits de memoria
-- Cleanup automático 
+### Optimizaciones
+- **Caching**: Resultados de búsqueda en memoria
+- **Lazy Loading**: Carga diferida de documentos grandes
+- **Batch Processing**: Procesamiento por lotes de PDFs 

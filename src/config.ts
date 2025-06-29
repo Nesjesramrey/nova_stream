@@ -25,6 +25,12 @@ export const config = {
   server: {
     port: parseInt(process.env.PORT || '3000', 10),
     publicDir: path.join(__dirname, '../public')
+  },
+  sharepoint: {
+    tenantId: process.env.SHAREPOINT_TENANT_ID || '',
+    clientId: process.env.SHAREPOINT_CLIENT_ID || '',
+    clientSecret: process.env.SHAREPOINT_CLIENT_SECRET || '',
+    siteUrl: process.env.SHAREPOINT_SITE_URL || ''
   }
 };
 

@@ -7,14 +7,16 @@
 - [Gestión de Audio](#gestión-de-audio)
 - [Comunicación WebSocket](#comunicación-websocket)
 - [Gestión de Chat](#gestión-de-chat)
+- [Gestión de Fuentes de Conocimiento](#gestión-de-fuentes-de-conocimiento)
 - [Subida de PDFs](#subida-de-pdfs)
+- [Gestión de SharePoint](#gestión-de-sharepoint)
 - [Flujo de Usuario](#flujo-de-usuario)
 - [Estados de la Aplicación](#estados-de-la-aplicación)
 - [Compatibilidad de Navegadores](#compatibilidad-de-navegadores)
 
 ## Arquitectura General
 
-El frontend es una aplicación web moderna construida con JavaScript vanilla (ES6+), HTML5 y CSS3. Utiliza APIs nativas del navegador para el manejo de audio y comunicación en tiempo real mediante Socket.IO.
+El frontend es una aplicación web moderna construida con JavaScript vanilla (ES6+), HTML5 y CSS3. Utiliza APIs nativas del navegador para el manejo de audio y comunicación en tiempo real mediante Socket.IO. **Ahora incluye soporte para múltiples fuentes de conocimiento** con interfaz dinámica.
 
 ### Stack Tecnológico
 - **Lenguaje**: JavaScript ES6+ (Modules)
@@ -22,6 +24,7 @@ El frontend es una aplicación web moderna construida con JavaScript vanilla (ES
 - **Audio**: Web Audio API, AudioWorklet
 - **UI**: HTML5 + CSS3 (sin frameworks)
 - **Módulos**: ES6 Modules nativos
+- **APIs**: Fetch API para comunicación REST
 - **Compatibilidad**: Navegadores modernos con Web Audio API
 
 ### Arquitectura de Componentes
@@ -33,6 +36,10 @@ Frontend Application
 │   └── AudioProcessor (Captura y procesamiento)
 ├── Chat Management
 │   └── ChatHistoryManager (Gestión de conversación)
+├── Knowledge Source Management (NUEVO)
+│   ├── Source Selector
+│   ├── SharePoint Controls
+│   └── Status Management
 ├── PDF Upload (pdf-upload.js)
 └── UI Components (Estáticos en HTML/CSS)
 ```
@@ -48,6 +55,8 @@ Es el núcleo de la aplicación que coordina todas las funcionalidades.
 - Coordinación entre componentes
 - Manejo de eventos de usuario
 - Control del estado de la aplicación
+- **Gestión de fuentes de conocimiento**
+- **Control de SharePoint Knowledge Base**
 
 **Variables Globales Clave:**
 ```javascript
@@ -62,6 +71,9 @@ let sourceNode;
 let waitingForAssistantResponse = false;
 let waitingForUserTranscription = false;
 let sessionInitialized = false;
+
+// Gestión de fuentes de conocimiento (NUEVO)
+let currentKnowledgeSource = 'bedrock';
 
 // Gestión de UI
 let userThinkingIndicator = null;
@@ -114,7 +126,24 @@ static getInstance(chatRef, setChat) {
 - Finalización de turnos y conversaciones
 - Actualización reactiva de la UI
 
-### 4. Subida de PDFs (`public/src/pdf-upload.js`)
+### 4. Gestión de Fuentes de Conocimiento (NUEVO)
+Sistema completo para manejar múltiples fuentes de conocimiento.
+
+**Componentes:**
+```javascript
+// Elementos del DOM
+const knowledgeSourceSelect = document.getElementById('knowledge-source');
+const updateSharePointButton = document.getElementById('update-sharepoint');
+const checkStatusButton = document.getElementById('check-status');
+const knowledgeStatusDiv = document.getElementById('knowledge-status');
+
+// Funciones principales
+knowledgeSourceSelect.addEventListener('change', handleKnowledgeSourceChange);
+updateSharePointButton.addEventListener('click', updateSharePointKB);
+checkStatusButton.addEventListener('click', checkSharePointStatus);
+```
+
+### 5. Subida de PDFs (`public/src/pdf-upload.js`)
 Funcionalidad independiente para cargar documentos al Knowledge Base.
 
 **Características:**
@@ -133,8 +162,8 @@ La interfaz está organizada en secciones modulares:
 <div class="header">
     <div class="header-content">
         <i class="fas fa-microphone-alt header-icon"></i>
-        <h1>Speak English with Sonic</h1>
-        <p>Powered by Amazon Bedrock & Amazon Nova Sonic</p>
+        <h1>Habla con Sonic</h1>
+        <p>Powered by Codster</p>
     </div>
 </div>
 ```
@@ -156,7 +185,47 @@ La interfaz está organizada en secciones modulares:
 - Botón Stop Streaming
 - Estados habilitado/deshabilitado dinámicos
 
-#### 5. PDF Upload Section
+#### 5. Knowledge Source Selection (NUEVA SECCIÓN)
+**Propósito**: Selección y gestión de fuentes de conocimiento
+**Componentes**:
+```html
+<div class="knowledge-section">
+    <div class="section-header">
+        <h2><i class="fas fa-database"></i> Fuente de Conocimiento</h2>
+        <p>Selecciona la fuente de información que Sonic usará</p>
+    </div>
+    
+    <div class="knowledge-card">
+        <div class="knowledge-selector">
+            <label for="knowledge-source" class="selector-label">
+                <i class="fas fa-brain"></i>
+                Fuente de Conocimiento:
+            </label>
+            <select id="knowledge-source" class="knowledge-dropdown">
+                <option value="bedrock">Bedrock Knowledge Base</option>
+                <option value="sharepoint">SharePoint Documents</option>
+            </select>
+        </div>
+        
+        <div class="knowledge-actions">
+            <button id="update-sharepoint" class="btn btn-info">
+                <i class="fas fa-sync-alt"></i>
+                <span>Actualizar SharePoint</span>
+            </button>
+            <button id="check-status" class="btn btn-outline">
+                <i class="fas fa-info-circle"></i>
+                <span>Ver Estado</span>
+            </button>
+        </div>
+        
+        <div id="knowledge-status" class="knowledge-status hidden">
+            <!-- Status info will be populated here -->
+        </div>
+    </div>
+</div>
+```
+
+#### 6. PDF Upload Section
 **Funcionalidad**:
 - Selector de archivos con drag & drop visual
 - Indicador de progreso
@@ -165,10 +234,38 @@ La interfaz está organizada en secciones modulares:
 ### Estilos CSS (`public/src/style.css`)
 **Características del diseño:**
 - Diseño responsive y moderno
-- Tema oscuro con acentos de color
+- Gradientes y efectos visuales sofisticados
 - Animaciones y transiciones suaves
 - Iconografía con Font Awesome
 - Estados visuales claros
+
+**Nuevos Estilos para Knowledge Source:**
+```css
+/* Knowledge Source Section */
+.knowledge-section {
+    padding: 30px;
+    background: linear-gradient(45deg, #f0f8ff 0%, #e6f3ff 100%);
+    border-top: 1px solid rgba(102, 126, 234, 0.1);
+}
+
+.knowledge-dropdown {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #e0e7ff;
+    border-radius: 10px;
+    font-size: 1rem;
+    background: white;
+    color: #333;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.knowledge-dropdown:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+```
 
 ## Gestión de Audio
 
@@ -223,9 +320,15 @@ processor.onaudioprocess = (e) => {
 
 ### Eventos Emitidos al Servidor
 
-#### 1. `promptStart`
+#### 1. `promptStart` - **ACTUALIZADO**
 **Timing**: Al inicializar sesión
-**Propósito**: Señalar inicio de nueva conversación
+**Propósito**: Señalar inicio de nueva conversación **con fuente de conocimiento**
+**Datos**: Objeto con `knowledgeSource`
+
+```javascript
+// Nueva implementación
+socket.emit('promptStart', { knowledgeSource: currentKnowledgeSource });
+```
 
 #### 2. `systemPrompt`
 **Timing**: Después de `promptStart`
@@ -244,6 +347,11 @@ processor.onaudioprocess = (e) => {
 #### 5. `stopAudio`
 **Timing**: Al parar streaming
 **Propósito**: Señalar fin de entrada de audio y ejecutar cierre
+
+#### 6. `setKnowledgeSource` - **NUEVO**
+**Timing**: Cuando el usuario cambia la fuente
+**Propósito**: Cambiar dinámicamente la fuente de conocimiento
+**Datos**: `{ source: 'bedrock' | 'sharepoint' }`
 
 ### Eventos Recibidos del Servidor
 
@@ -272,7 +380,11 @@ socket.on('textOutput', (data) => {
 **Respuesta**: Fin de respuesta del asistente
 **Acción**: Ocultar indicadores y finalizar turno
 
-#### 5. `error`
+#### 5. `knowledgeSourceSet` - **NUEVO**
+**Respuesta**: Confirmación de cambio de fuente de conocimiento
+**Acción**: Actualizar UI y estado local
+
+#### 6. `error`
 **Respuesta**: Errores del servidor
 **Acción**: Mostrar mensaje de error y restablecer estado
 
@@ -317,12 +429,162 @@ function updateChatUI() {
 - **Asistente pensando**: Desde `contentStart` hasta `contentEnd`
 - **Animaciones**: Puntos animados con CSS
 
+## Gestión de Fuentes de Conocimiento
+
+### Selector de Fuente (NUEVO)
+
+#### Variables de Estado
+```javascript
+let currentKnowledgeSource = 'bedrock'; // Estado global de la fuente
+```
+
+#### Event Handlers
+```javascript
+// Cambio de fuente de conocimiento
+knowledgeSourceSelect.addEventListener('change', (e) => {
+    currentKnowledgeSource = e.target.value;
+    console.log(`Knowledge source changed to: ${currentKnowledgeSource}`);
+    
+    // Update button visibility based on selection
+    if (currentKnowledgeSource === 'sharepoint') {
+        updateSharePointButton.style.display = 'flex';
+        checkStatusButton.style.display = 'flex';
+    } else {
+        updateSharePointButton.style.display = 'none';
+        checkStatusButton.style.display = 'none';
+        knowledgeStatusDiv.classList.add('hidden');
+    }
+});
+```
+
+#### Inicialización de Sesión con Fuente
+```javascript
+async function initializeSession() {
+    try {
+        // Send events in sequence with knowledge source
+        socket.emit('promptStart', { knowledgeSource: currentKnowledgeSource });
+        socket.emit('systemPrompt', SYSTEM_PROMPT);
+        socket.emit('audioStart');
+
+        sessionInitialized = true;
+        console.log(`Session initialized with ${currentKnowledgeSource} knowledge source`);
+    } catch (error) {
+        console.error("Failed to initialize session:", error);
+    }
+}
+```
+
+### UI Dinámica
+- **Bedrock seleccionado**: Oculta botones de SharePoint
+- **SharePoint seleccionado**: Muestra botones de actualización y estado
+- **Transiciones suaves**: Animaciones CSS para cambios de estado
+
+## Gestión de SharePoint
+
+### Actualización de Knowledge Base
+
+#### Función de Actualización
+```javascript
+updateSharePointButton.addEventListener('click', async () => {
+    const button = updateSharePointButton;
+    const icon = button.querySelector('i');
+    const span = button.querySelector('span');
+    
+    // Show loading state
+    button.classList.add('loading');
+    icon.className = 'fas fa-spinner';
+    span.textContent = 'Actualizando...';
+    button.disabled = true;
+    
+    try {
+        const response = await fetch('/api/sharepoint/update', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showKnowledgeStatus(`✅ SharePoint actualizado: ${result.updated} documentos procesados`, 'success');
+            // Auto-refresh status after update
+            setTimeout(() => checkSharePointStatus(), 1000);
+        } else {
+            showKnowledgeStatus(`❌ Error: ${result.message}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error updating SharePoint:', error);
+        showKnowledgeStatus(`❌ Error de conexión: ${error.message}`, 'error');
+    } finally {
+        // Reset button state
+        button.classList.remove('loading');
+        icon.className = 'fas fa-sync-alt';
+        span.textContent = 'Actualizar SharePoint';
+        button.disabled = false;
+    }
+});
+```
+
+### Verificación de Estado
+
+#### Función de Estado
+```javascript
+async function checkSharePointStatus() {
+    try {
+        const response = await fetch('/api/sharepoint/status');
+        const result = await response.json();
+        
+        if (result.success) {
+            displaySharePointStatus(result.status);
+        } else {
+            showKnowledgeStatus(`❌ Error: ${result.message}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error checking SharePoint status:', error);
+        showKnowledgeStatus(`❌ Error de conexión: ${error.message}`, 'error');
+    }
+}
+```
+
+#### Visualización de Estado
+```javascript
+function displaySharePointStatus(status) {
+    const lastSync = new Date(status.lastSync).toLocaleString('es-ES');
+    
+    knowledgeStatusDiv.innerHTML = `
+        <h3><i class="fas fa-info-circle"></i> Estado de SharePoint Knowledge Base</h3>
+        <div class="status-info">
+            <div class="status-item documents">
+                <h4>Documentos</h4>
+                <p>${status.documentCount}</p>
+            </div>
+            <div class="status-item size">
+                <h4>Tamaño Total</h4>
+                <p>${status.formattedSize}</p>
+            </div>
+            <div class="status-item sync">
+                <h4>Última Sincronización</h4>
+                <p>${lastSync}</p>
+            </div>
+        </div>
+    `;
+    knowledgeStatusDiv.classList.remove('hidden');
+}
+```
+
+### Estados de Botones
+- **Loading State**: Spinner animado durante operaciones
+- **Success State**: Feedback visual positivo
+- **Error State**: Mensajes de error claros
+- **Disabled State**: Prevención de múltiples clicks
+
 ## Subida de PDFs
 
 ### Flujo de Subida
 1. **Validación**: Verificar tipo de archivo (PDF únicamente)
 2. **Preparación**: Crear FormData con el archivo
-3. **Upload**: POST request a `/api/pdf`
+3. **Upload**: POST request a `/api/upload`
 4. **Seguimiento**: Polling del estado del job de sincronización
 5. **Feedback**: Actualización visual del progreso
 
@@ -356,15 +618,26 @@ async function pollJobStatus(jobId) {
 Carga de página → Solicitar micrófono → Inicializar Audio Context → Estado "Ready"
 ```
 
-### 2. Conversación
+### 2. Selección de Fuente de Conocimiento (NUEVO)
 ```
-Click Start → Inicializar sesión → Comenzar streaming → Capturar audio → 
-Recibir transcripción → Mostrar respuesta → Audio del asistente → Finalizar turno
+Usuario selecciona fuente → UI se actualiza → Configuración se guarda → Botones se muestran/ocultan
 ```
 
-### 3. Subida de PDF
+### 3. Actualización de SharePoint (NUEVO)
 ```
-Seleccionar archivo → Validar → Upload → Polling estado → Confirmación
+Click "Actualizar SharePoint" → Loading state → API call → Procesamiento → Success/Error feedback
+```
+
+### 4. Conversación
+```
+Click Start → Seleccionar fuente → Inicializar sesión → Comenzar streaming → 
+Capturar audio → Recibir transcripción → Mostrar respuesta → Audio del asistente → 
+Finalizar turno
+```
+
+### 5. Verificación de Estado (NUEVO)
+```
+Click "Ver Estado" → API call → Mostrar estadísticas → Información de documentos
 ```
 
 ## Estados de la Aplicación
@@ -382,62 +655,125 @@ Seleccionar archivo → Validar → Upload → Polling estado → Confirmación
 - **`transcriptionReceived`**: Transcripción completada
 - **`sessionInitialized`**: Sesión configurada con Bedrock
 
+### Estados de Knowledge Base (NUEVOS)
+- **`bedrock-selected`**: Usando Bedrock Knowledge Base
+- **`sharepoint-selected`**: Usando SharePoint Knowledge Base
+- **`updating-sharepoint`**: Actualizando SharePoint KB
+- **`checking-status`**: Verificando estado de SharePoint
+
 ### Indicadores Visuales
 ```javascript
 // Indicador de usuario pensando
 function showUserThinkingIndicator() {
-    const indicator = document.createElement('div');
-    indicator.className = 'message user thinking';
-    indicator.innerHTML = `
-        <div class="message-content">
-            <div class="typing-indicator">
-                <span></span><span></span><span></span>
-            </div>
-        </div>
-    `;
+    userThinkingIndicator = document.createElement('div');
+    userThinkingIndicator.className = 'message user thinking';
+    
+    const listeningText = document.createElement('div');
+    listeningText.className = 'thinking-text';
+    listeningText.textContent = 'Listening';
+    
+    const dotContainer = document.createElement('div');
+    dotContainer.className = 'thinking-dots';
+    
+    for (let i = 0; i < 3; i++) {
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        dotContainer.appendChild(dot);
+    }
+    
+    userThinkingIndicator.appendChild(listeningText);
+    userThinkingIndicator.appendChild(dotContainer);
+    chatContainer.appendChild(userThinkingIndicator);
 }
 ```
 
 ## Compatibilidad de Navegadores
 
-### Navegadores Soportados
-- **Chrome/Chromium 66+**: Soporte completo
-- **Firefox 76+**: Con ajustes de sample rate
-- **Safari 14.1+**: Soporte básico
-- **Edge 79+**: Soporte completo
-
-### Características Específicas por Navegador
-
-#### Chrome/Edge
-- AudioContext con sample rate personalizado (16kHz)
-- Sampling ratio 1:1
-- AudioWorklet completo
-
-#### Firefox
-- Sample rate nativo del dispositivo
-- Downsampling manual requerido
-- Sampling ratio variable
-
-```javascript
-const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
-
-if (isFirefox) {
-    audioContext = new AudioContext(); // Sample rate nativo
-    samplingRatio = audioContext.sampleRate / TARGET_SAMPLE_RATE;
-} else {
-    audioContext = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE });
-}
-```
+### Requisitos Mínimos
+- **Chrome**: v91+
+- **Firefox**: v90+
+- **Safari**: v14+
+- **Edge**: v91+
 
 ### APIs Requeridas
-- **Web Audio API**: Para procesamiento de audio
-- **MediaDevices API**: Para acceso al micrófono
-- **AudioWorklet**: Para procesamiento avanzado
-- **WebSocket/Socket.IO**: Para comunicación en tiempo real
-- **Fetch API**: Para subida de archivos
+- Web Audio API
+- MediaDevices.getUserMedia()
+- WebSocket/Socket.IO
+- Fetch API
+- ES6+ (Modules, Async/Await, Arrow Functions)
 
-### Consideraciones de Rendimiento
-- **Chunks de audio**: 512 samples para latencia baja
-- **Buffer management**: Limpieza automática de recursos
-- **Memory usage**: Gestión cuidadosa de AudioBuffers
-- **Real-time processing**: Optimizado para streaming continuo 
+### Fallbacks y Polyfills
+- **AudioWorklet**: Fallback a ScriptProcessorNode en navegadores legacy
+- **Fetch**: Polyfill incluido para compatibilidad extendida
+
+## Funcionalidades Avanzadas
+
+### 1. Gestión de Estado Reactiva
+- **Singleton Pattern**: ChatHistoryManager
+- **Event-driven**: Actualización automática de UI
+- **State Management**: Variables globales centralizadas
+
+### 2. Optimización de Performance
+- **Lazy Loading**: Carga diferida de componentes
+- **Debouncing**: Prevención de múltiples calls API
+- **Memory Management**: Limpieza automática de audio buffers
+
+### 3. Experiencia de Usuario
+- **Loading States**: Feedback visual en todas las operaciones
+- **Error Handling**: Mensajes de error amigables
+- **Responsive Design**: Adaptación a diferentes tamaños de pantalla
+- **Accessibility**: Soporte básico para lectores de pantalla
+
+### 4. Integración Multi-plataforma
+- **REST APIs**: Comunicación con múltiples servicios
+- **WebSocket**: Comunicación en tiempo real
+- **File Upload**: Soporte para múltiples tipos de archivo
+- **Status Polling**: Monitoreo de procesos asincrónicos
+
+## Estructura de Archivos
+
+```
+public/
+├── index.html              # Estructura principal de la UI
+├── src/
+│   ├── main.js             # Controlador principal + Knowledge management
+│   ├── pdf-upload.js       # Funcionalidad de upload de PDFs
+│   ├── style.css           # Estilos completos + Knowledge styles
+│   └── lib/
+│       ├── play/
+│       │   ├── AudioPlayer.js                    # Sistema de reproducción
+│       │   └── AudioPlayerProcessor.worklet.js   # Audio worklet processor
+│       └── util/
+│           ├── ChatHistoryManager.js             # Gestión de chat
+│           └── ObjectsExt.js                     # Utilidades
+└── pdf_files/              # Archivos PDF estáticos
+```
+
+## Configuración de Desarrollo
+
+### Servidor de Desarrollo
+El frontend se sirve estáticamente desde el servidor Node.js:
+
+```javascript
+// Configuración en server.ts
+app.use(express.static(config.server.publicDir));
+```
+
+### Variables de Configuración
+```javascript
+// Configuración del sistema de audio
+const TARGET_SAMPLE_RATE = 16000;
+const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
+
+// Configuración de prompt del sistema
+let SYSTEM_PROMPT = "Saluda al usuario.";
+
+// Configuración de fuente de conocimiento
+let currentKnowledgeSource = 'bedrock';
+```
+
+### Testing y Debugging
+- **Console Logging**: Logging comprehensivo en todas las operaciones
+- **Error Boundaries**: Manejo de errores en cada componente
+- **Estado Visual**: Indicadores claros del estado del sistema
+- **Network Monitoring**: Logs de todas las comunicaciones WebSocket y REST

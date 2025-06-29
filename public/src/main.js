@@ -45,13 +45,10 @@ const TARGET_SAMPLE_RATE = 16000;
 const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
 
 // Custom system prompt - you can modify this
-let SYSTEM_PROMPT = "ASK FOR THE NAME AT THE BEGINNING. " +
+let SYSTEM_PROMPT = "Saluda al usuario . ";
 
-  "You are an encouraging and patient English teacher. " +
-  "Engage in a friendly spoken dialogue with the student. " +
-  "Speak clearly and use short, simple sentences based on the student's level. " +
-  "Correct grammar and pronunciation gently when necessary, and give short explanations or examples when helpful. " +
-  "Ask follow-up questions to keep the conversation going and help the student feel comfortable practicing English.";
+// Knowledge source management
+let currentKnowledgeSource = 'bedrock';
 
 
 // Initialize WebSocket audio
@@ -102,14 +99,15 @@ async function initializeSession() {
     statusElement.textContent = "Initializing session...";
 
     try {
-        // Send events in sequence
-        socket.emit('promptStart');
+        // Send events in sequence with knowledge source
+        socket.emit('promptStart', { knowledgeSource: currentKnowledgeSource });
         socket.emit('systemPrompt', SYSTEM_PROMPT);
         socket.emit('audioStart');
 
         // Mark session as initialized
         sessionInitialized = true;
         statusElement.textContent = "Session initialized successfully";
+        console.log(`Session initialized with ${currentKnowledgeSource} knowledge source`);
     } catch (error) {
         console.error("Failed to initialize session:", error);
         statusElement.textContent = "Error initializing session";
@@ -542,6 +540,144 @@ socket.on('error', (error) => {
 // Button event listeners
 startButton.addEventListener('click', startStreaming);
 stopButton.addEventListener('click', stopStreaming);
+
+// Knowledge source management
+const knowledgeSourceSelect = document.getElementById('knowledge-source');
+const updateSharePointButton = document.getElementById('update-sharepoint');
+const checkStatusButton = document.getElementById('check-status');
+const knowledgeStatusDiv = document.getElementById('knowledge-status');
+
+// Knowledge source change handler
+knowledgeSourceSelect.addEventListener('change', (e) => {
+    currentKnowledgeSource = e.target.value;
+    console.log(`Knowledge source changed to: ${currentKnowledgeSource}`);
+    
+    // Update button visibility based on selection
+    if (currentKnowledgeSource === 'sharepoint') {
+        updateSharePointButton.style.display = 'flex';
+        checkStatusButton.style.display = 'flex';
+    } else {
+        updateSharePointButton.style.display = 'none';
+        checkStatusButton.style.display = 'none';
+        knowledgeStatusDiv.classList.add('hidden');
+    }
+});
+
+// Update SharePoint knowledge base
+updateSharePointButton.addEventListener('click', async () => {
+    const button = updateSharePointButton;
+    const icon = button.querySelector('i');
+    const span = button.querySelector('span');
+    
+    // Show loading state
+    button.classList.add('loading');
+    icon.className = 'fas fa-spinner';
+    span.textContent = 'Actualizando...';
+    button.disabled = true;
+    
+    try {
+        const response = await fetch('/api/sharepoint/update', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showKnowledgeStatus(`✅ SharePoint actualizado: ${result.updated} documentos procesados`, 'success');
+            // Auto-refresh status after update
+            setTimeout(() => checkSharePointStatus(), 1000);
+        } else {
+            showKnowledgeStatus(`❌ Error: ${result.message}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error updating SharePoint:', error);
+        showKnowledgeStatus(`❌ Error de conexión: ${error.message}`, 'error');
+    } finally {
+        // Reset button state
+        button.classList.remove('loading');
+        icon.className = 'fas fa-sync-alt';
+        span.textContent = 'Actualizar SharePoint';
+        button.disabled = false;
+    }
+});
+
+// Check SharePoint status
+checkStatusButton.addEventListener('click', checkSharePointStatus);
+
+async function checkSharePointStatus() {
+    const button = checkStatusButton;
+    const icon = button.querySelector('i');
+    const span = button.querySelector('span');
+    
+    // Show loading state
+    button.classList.add('loading');
+    icon.className = 'fas fa-spinner';
+    span.textContent = 'Verificando...';
+    button.disabled = true;
+    
+    try {
+        const response = await fetch('/api/sharepoint/status');
+        const result = await response.json();
+        
+        if (result.success) {
+            displaySharePointStatus(result.status);
+        } else {
+            showKnowledgeStatus(`❌ Error: ${result.message}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error checking SharePoint status:', error);
+        showKnowledgeStatus(`❌ Error de conexión: ${error.message}`, 'error');
+    } finally {
+        // Reset button state
+        button.classList.remove('loading');
+        icon.className = 'fas fa-info-circle';
+        span.textContent = 'Ver Estado';
+        button.disabled = false;
+    }
+}
+
+function displaySharePointStatus(status) {
+    const lastSync = new Date(status.lastSync).toLocaleString('es-ES');
+    
+    knowledgeStatusDiv.innerHTML = `
+        <h3><i class="fas fa-info-circle"></i> Estado de SharePoint Knowledge Base</h3>
+        <div class="status-info">
+            <div class="status-item documents">
+                <h4>Documentos</h4>
+                <p>${status.documentCount}</p>
+            </div>
+            <div class="status-item size">
+                <h4>Tamaño Total</h4>
+                <p>${status.formattedSize}</p>
+            </div>
+            <div class="status-item sync">
+                <h4>Última Sincronización</h4>
+                <p>${lastSync}</p>
+            </div>
+        </div>
+    `;
+    knowledgeStatusDiv.classList.remove('hidden');
+}
+
+function showKnowledgeStatus(message, type = 'info') {
+    knowledgeStatusDiv.innerHTML = `
+        <div class="status-message ${type}">
+            <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+            ${message}
+        </div>
+    `;
+    knowledgeStatusDiv.classList.remove('hidden');
+}
+
+// Initialize knowledge source UI
+document.addEventListener('DOMContentLoaded', () => {
+    // Initially hide SharePoint buttons since Bedrock is default
+    updateSharePointButton.style.display = 'none';
+    checkStatusButton.style.display = 'none';
+});
 
 // Initialize the app when the page loads
 document.addEventListener('DOMContentLoaded', initAudio);
