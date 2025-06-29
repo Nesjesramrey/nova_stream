@@ -152,7 +152,7 @@ interface SessionData {
   isPromptStartSent: boolean;
   isAudioContentStartSent: boolean;
   audioContentId: string;
-  knowledgeSource: 'bedrock' | 'sharepoint';
+  knowledgeSource: 'bedrock' | 'sharepoint' | 'none';
 }
 
 export class NovaSonicBidirectionalStreamClient {
@@ -230,7 +230,7 @@ export class NovaSonicBidirectionalStreamClient {
       isPromptStartSent: false,
       isAudioContentStartSent: false,
       audioContentId: randomUUID(),
-      knowledgeSource: 'bedrock'
+      knowledgeSource: 'none'
     };
 
     this.activeSessions.set(sessionId, session);
@@ -637,16 +637,18 @@ export class NovaSonicBidirectionalStreamClient {
       }
     });
   }
-  public setupPromptStartEvent(sessionId: string, knowledgeSource: 'bedrock' | 'sharepoint' = 'bedrock'): void {
+  public setupPromptStartEvent(sessionId: string, knowledgeSource: 'bedrock' | 'sharepoint' | 'none' = 'none'): void {
     console.log(`Setting up prompt start event for session ${sessionId} with ${knowledgeSource} knowledge source...`);
     const session = this.activeSessions.get(sessionId);
     if (!session) return;
 
     // Establecer la fuente de conocimiento
-    session.knowledgeSource = knowledgeSource;
+    if (knowledgeSource !== 'none') {
+      session.knowledgeSource = knowledgeSource;
+    }
 
     // Configurar herramientas según la fuente seleccionada
-    const toolConfig = knowledgeSource === 'bedrock' ? {
+    const toolConfig = knowledgeSource === 'none' ? null : knowledgeSource === 'bedrock' ? {
       toolChoice: {
         tool: { name: "retrieve_benefit_policy" }
       },
@@ -686,7 +688,7 @@ export class NovaSonicBidirectionalStreamClient {
           toolUseOutputConfiguration: {
             mediaType: "application/json",
           },
-          toolConfiguration: toolConfig,
+          ...(toolConfig && { toolConfiguration: toolConfig }),
         },
       }
     });
