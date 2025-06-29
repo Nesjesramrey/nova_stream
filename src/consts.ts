@@ -119,5 +119,5 @@ Then give kind, honest feedback:
 export const DefaultAudioOutputConfiguration = {
   ...DefaultAudioInputConfiguration,
   sampleRateHertz: 24000,
-  voiceId: "tiffany",
+  voiceId: "lupe",
 };
