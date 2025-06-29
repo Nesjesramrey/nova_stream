@@ -45,7 +45,7 @@ const TARGET_SAMPLE_RATE = 16000;
 const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
 
 // Custom system prompt - you can modify this
-let SYSTEM_PROMPT = "Saluda al usuario . ";
+let SYSTEM_PROMPT = "Saluda al usuario. ";
 
 // Knowledge source management
 let currentKnowledgeSource = 'bedrock';
@@ -82,7 +82,7 @@ async function initAudio() {
 
         await audioPlayer.start();
 
-        statusElement.textContent = "Microphone ready. Click Start to begin.";
+        statusElement.textContent = "Microfono listo. Click para iniciar a hablar.";
         statusElement.className = "ready";
         startButton.disabled = false;
     } catch (error) {

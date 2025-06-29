@@ -766,7 +766,7 @@ const TARGET_SAMPLE_RATE = 16000;
 const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
 
 // Configuración de prompt del sistema
-let SYSTEM_PROMPT = "Saluda al usuario.";
+let SYSTEM_PROMPT = "Saluda al usuario. Debes dar respuestas cortas y concisas, no mas de ttres lineas.";
 
 // Configuración de fuente de conocimiento
 let currentKnowledgeSource = 'bedrock';
