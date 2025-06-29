@@ -59,6 +59,42 @@
             </div>
         </div>
         
+        <!-- Knowledge Source Selection -->
+        <div class="knowledge-section">
+            <div class="section-header">
+                <h2><i class="fas fa-database"></i> Fuente de Conocimiento</h2>
+                <p>Selecciona la fuente de información que Sonic usará</p>
+            </div>
+            
+            <div class="knowledge-card">
+                <div class="knowledge-selector">
+                    <label for="knowledge-source" class="selector-label">
+                        <i class="fas fa-brain"></i>
+                        Fuente de Conocimiento:
+                    </label>
+                    <select id="knowledge-source" class="knowledge-dropdown">
+                        <option value="bedrock">Bedrock Knowledge Base</option>
+                        <option value="sharepoint">SharePoint Documents</option>
+                    </select>
+                </div>
+                
+                <div class="knowledge-actions">
+                    <button id="update-sharepoint" class="btn btn-info">
+                        <i class="fas fa-sync-alt"></i>
+                        <span>Actualizar SharePoint</span>
+                    </button>
+                    <button id="check-status" class="btn btn-outline">
+                        <i class="fas fa-info-circle"></i>
+                        <span>Ver Estado</span>
+                    </button>
+                </div>
+                
+                <div id="knowledge-status" class="knowledge-status hidden">
+                    <!-- Status info will be populated here -->
+                </div>
+            </div>
+        </div>
+        
         <!-- PDF Upload Section -->
         <div class="upload-section">
             <div class="section-header">

@@ -21,8 +21,11 @@ import {
   DefaultSystemPrompt,
   DefaultTextConfiguration,
   KnowledgeBaseToolSchema,
+  SharePointToolSchema,
+  DefaultInferenceConfiguration,
 } from "./consts";
 import { BedrockKnowledgeBaseClient } from "./bedrock-kb-client";
+import { SharePointKnowledgeBase } from "./sharepoint-storage";
 import { config } from './config';
 
 export interface NovaSonicBidirectionalStreamClientConfig {
@@ -50,8 +53,8 @@ export class StreamSession {
     return this; // For chaining
   }
 
-  public async setupPromptStart(): Promise<void> {
-    this.client.setupPromptStartEvent(this.sessionId);
+  public async setupPromptStart(knowledgeSource: 'bedrock' | 'sharepoint' = 'bedrock'): Promise<void> {
+    this.client.setupPromptStartEvent(this.sessionId, knowledgeSource);
   }
 
   public async setupSystemPrompt(
@@ -149,6 +152,7 @@ interface SessionData {
   isPromptStartSent: boolean;
   isAudioContentStartSent: boolean;
   audioContentId: string;
+  knowledgeSource: 'bedrock' | 'sharepoint';
 }
 
 export class NovaSonicBidirectionalStreamClient {
@@ -157,7 +161,7 @@ export class NovaSonicBidirectionalStreamClient {
   private activeSessions: Map<string, SessionData> = new Map();
   private sessionLastActivity: Map<string, number> = new Map();
   private sessionCleanupInProgress = new Set<string>();
-
+  private sharepointKB: SharePointKnowledgeBase;
 
   constructor(config: NovaSonicBidirectionalStreamClientConfig) {
     const http2Client = new NodeHttp2Handler({
@@ -179,11 +183,8 @@ export class NovaSonicBidirectionalStreamClient {
       requestHandler: http2Client
     });
 
-    this.inferenceConfig = config.inferenceConfig ?? {
-      maxTokens: 1024,
-      topP: 0.9,
-      temperature: 0.7,
-    };
+    this.inferenceConfig = config.inferenceConfig ?? DefaultInferenceConfiguration;
+    this.sharepointKB = new SharePointKnowledgeBase();
   }
 
   public isSessionActive(sessionId: string): boolean {
@@ -228,7 +229,8 @@ export class NovaSonicBidirectionalStreamClient {
       isActive: true,
       isPromptStartSent: false,
       isAudioContentStartSent: false,
-      audioContentId: randomUUID()
+      audioContentId: randomUUID(),
+      knowledgeSource: 'bedrock'
     };
 
     this.activeSessions.set(sessionId, session);
@@ -236,17 +238,35 @@ export class NovaSonicBidirectionalStreamClient {
     return new StreamSession(sessionId, this);
   }
 
+  // Método para establecer la fuente de conocimiento
+  public setKnowledgeSource(sessionId: string, source: 'bedrock' | 'sharepoint'): void {
+    const session = this.activeSessions.get(sessionId);
+    if (session) {
+      session.knowledgeSource = source;
+      console.log(`Knowledge source set to ${source} for session ${sessionId}`);
+    }
+  }
+
   private async processToolUse(toolName: string, toolUseContent: object): Promise<Object> {
     const tool = toolName.toLowerCase();
 
     switch (tool) {
       case "retrieve_benefit_policy":
-        console.log(`Retrieving company benefits: ${JSON.stringify(toolUseContent)}`);
+        console.log(`Retrieving company benefits from Bedrock: ${JSON.stringify(toolUseContent)}`);
         const kbContent = await this.parseToolUseContent(toolUseContent);
         if (!kbContent) {
           throw new Error('parsedContent is undefined');
         }
         return this.queryBenefitPolicy(kbContent?.query, kbContent?.maxResults);
+      
+      case "retrieve_sharepoint_knowledge":
+        console.log(`Retrieving knowledge from SharePoint: ${JSON.stringify(toolUseContent)}`);
+        const spContent = await this.parseToolUseContent(toolUseContent);
+        if (!spContent) {
+          throw new Error('parsedContent is undefined');
+        }
+        return this.querySharePointKnowledge(spContent?.query, spContent?.maxResults);
+      
       default:
         console.log(`Tool ${tool} not supported`)
         throw new Error(`Tool ${tool} not supported`);
@@ -255,11 +275,10 @@ export class NovaSonicBidirectionalStreamClient {
 
   private async queryBenefitPolicy(query: string, numberOfResults: number = 3): Promise<Object> {
     const kbClient = new BedrockKnowledgeBaseClient();
-
     const KNOWLEDGE_BASE_ID = config.knowledgeBase.id;
 
     try {
-      console.log(`Searching for: "${query}"`);
+      console.log(`Searching Bedrock KB for: "${query}"`);
 
       const results = await kbClient.retrieveFromKnowledgeBase({
         knowledgeBaseId: KNOWLEDGE_BASE_ID,
@@ -267,10 +286,37 @@ export class NovaSonicBidirectionalStreamClient {
         numberOfResults: numberOfResults
       });
 
-      return { results: results };
+      return { 
+        source: 'bedrock',
+        results: results 
+      };
     } catch (error) {
-      console.error("Error:", error);
-      return {};
+      console.error("Error querying Bedrock KB:", error);
+      return { source: 'bedrock', results: [] };
+    }
+  }
+
+  private async querySharePointKnowledge(query: string, numberOfResults: number = 5): Promise<Object> {
+    try {
+      console.log(`Searching SharePoint KB for: "${query}"`);
+
+      const results = await this.sharepointKB.searchKnowledge(query, numberOfResults);
+
+      return { 
+        source: 'sharepoint',
+        results: results.map(result => ({
+          content: result.text,
+          metadata: {
+            source: result.fileName,
+            excerpt: result.excerpt,
+            title: result.fileName
+          },
+          score: result.relevanceScore
+        }))
+      };
+    } catch (error) {
+      console.error("Error querying SharePoint KB:", error);
+      return { source: 'sharepoint', results: [] };
     }
   }
 
@@ -591,10 +637,43 @@ export class NovaSonicBidirectionalStreamClient {
       }
     });
   }
-  public setupPromptStartEvent(sessionId: string): void {
-    console.log(`Setting up prompt start event for session ${sessionId}...`);
+  public setupPromptStartEvent(sessionId: string, knowledgeSource: 'bedrock' | 'sharepoint' = 'bedrock'): void {
+    console.log(`Setting up prompt start event for session ${sessionId} with ${knowledgeSource} knowledge source...`);
     const session = this.activeSessions.get(sessionId);
     if (!session) return;
+
+    // Establecer la fuente de conocimiento
+    session.knowledgeSource = knowledgeSource;
+
+    // Configurar herramientas según la fuente seleccionada
+    const toolConfig = knowledgeSource === 'bedrock' ? {
+      toolChoice: {
+        tool: { name: "retrieve_benefit_policy" }
+      },
+      tools: [{
+        toolSpec: {
+          name: "retrieve_benefit_policy",
+          description: "Retrieves company benefit policy from Bedrock Knowledge Base. It includes medical, vision, financial etc.. Anything related with employee policy.",
+          inputSchema: {
+            json: KnowledgeBaseToolSchema
+          }
+        }
+      }]
+    } : {
+      toolChoice: {
+        tool: { name: "retrieve_sharepoint_knowledge" }
+      },
+      tools: [{
+        toolSpec: {
+          name: "retrieve_sharepoint_knowledge",
+          description: "Retrieves information from SharePoint documents. Use this to search for any information stored in SharePoint PDFs.",
+          inputSchema: {
+            json: SharePointToolSchema
+          }
+        }
+      }]
+    };
+
     // Prompt start event
     this.addEventToSessionQueue(sessionId, {
       event: {
@@ -607,21 +686,7 @@ export class NovaSonicBidirectionalStreamClient {
           toolUseOutputConfiguration: {
             mediaType: "application/json",
           },
-          toolConfiguration: {
-            "toolChoice": {
-              "tool": { "name": "retrieve_benefit_policy" }
-            },
-            tools: [{
-              toolSpec: {
-                name: "retrieve_benefit_policy",
-                description: "Retrieves aglia company benefit policy. It includes medical, vision, financial etc.. Anything related with employee policy.",
-                inputSchema: {
-                  json: KnowledgeBaseToolSchema
-                }
-              }
-            }
-            ]
-          },
+          toolConfiguration: toolConfig,
         },
       }
     });
